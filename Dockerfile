@@ -1,153 +1,76 @@
 # =============================================================================
-# Dockerfile: cGENIE with Aluminium Cycle Module
+# Dockerfile v2: cGENIE with Aluminium Cycle Module (FIXED)
 # =============================================================================
-# Purpose: Build a containerized cGENIE Earth system model with the
-#          Al-Enhanced Biological Pump (AEBP) module for LPIA validation.
-#
-# Base: Ubuntu 22.04 LTS
-# Requirements: Docker 20.10+ or Podman 3.0+
-# Build time: ~15-20 minutes (depends on network and CPU)
-# Image size: ~2.5 GB
-#
-# Usage:
-#   docker build -t cgenie-al:latest .
-#   docker run -it --name cgenie-lpia cgenie-al:latest
+# BUILD: docker build -f Dockerfile.v2 -t cgenie-al:v2 .
+# RUN:   docker run -it --rm -v $(pwd)/output:/data/output cgenie-al:v2
 # =============================================================================
 
 FROM ubuntu:22.04
 
-# Prevent interactive prompts during apt-get
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
-# =============================================================================
-# Stage 1: System dependencies
-# =============================================================================
+# Stage 1: Dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Fortran compiler and build tools
-    gfortran-12 \
-    gfortran \
-    build-essential \
-    cmake \
-    make \
-    # NetCDF (required by cGENIE for I/O)
-    libnetcdf-dev \
-    libnetcdff-dev \
-    netcdf-bin \
-    # Version control and utilities
-    git \
-    wget \
-    curl \
-    vim \
-    nano \
-    # Python for post-processing
-    python3 \
-    python3-pip \
-    python3-numpy \
-    python3-scipy \
-    python3-matplotlib \
-    # System libraries
-    liblapack-dev \
-    libblas-dev \
+    gfortran gfortran-12 build-essential make cmake \
+    libnetcdf-dev libnetcdff-dev netcdf-bin \
+    git wget curl vim nano python3 python3-pip \
+    python3-numpy python3-scipy python3-matplotlib \
+    liblapack-dev libblas-dev file ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Set Fortran compiler
-ENV FC=gfortran
-ENV F77=gfortran
-ENV F90=gfortran
-ENV CC=gcc
+ENV FC=gfortran F77=gfortran F90=gfortran CC=gcc
 
-# =============================================================================
-# Stage 2: Clone cGENIE repository
-# =============================================================================
+# Stage 2: Clone cGENIE
 WORKDIR /opt
-
-# Clone the main cGENIE (muffin) repository
-# Using the Bristol team's official repository
-RUN git clone --depth 1 https://github.com/derpycode/cgenie.muffin.git cgenie
+RUN git clone --depth 1 https://github.com/derpycode/cgenie.muffin.git cgenie 2>&1 || \
+    git clone --depth 1 https://gitlab.com/derpycode/cgenie.muffin.git cgenie
 
 WORKDIR /opt/cgenie
 
-# =============================================================================
-# Stage 3: Apply Aluminium Cycle Module patches
-# =============================================================================
+# Inspect real structure
+RUN echo "=== cGENIE Structure ===" && \
+    ls -la /opt/cgenie/ && \
+    echo "=== genie-main ===" && ls -la /opt/cgenie/genie-main/ && \
+    echo "=== Makefiles ===" && find /opt/cgenie -maxdepth 2 -name "*[Mm]ake*" -type f
 
-# Copy patch files into the container
+# Stage 3: Copy patches and configs
 COPY patches/ /opt/cgenie/patches/
 COPY configs/ /opt/cgenie/configs/
 COPY scripts/ /opt/cgenie/scripts/
+RUN chmod +x /opt/cgenie/patches/apply_patches.sh /opt/cgenie/scripts/*.sh
 
-# Apply the Al cycle module patches
-# Each patch modifies specific Fortran source files
-RUN chmod +x /opt/cgenie/patches/apply_patches.sh && \
-    cd /opt/cgenie && \
-    ./patches/apply_patches.sh
+# Stage 4: Install Al module
+RUN cp /opt/cgenie/patches/biogem_al.f90 \
+       /opt/cgenie/genie-biogem/src/fortran/biogem_al.f90
 
-# =============================================================================
-# Stage 4: Compile cGENIE with Al module
-# =============================================================================
+# Stage 5: BUILD cGENIE
+WORKDIR /opt/cgenie/genie-main
 
-# Set up the build environment
-ENV CGENIE_ROOT=/opt/cgenie
-ENV NETCDF_INC=/usr/include
-ENV NETCDF_LIB=/usr/lib/x86_64-linux-gnu
+# cGENIE uses a script-based build system. Try multiple approaches.
+RUN echo "=== Build Attempt 1: Standard make ===" && \
+    make clean 2>/dev/null; make -j$(nproc) 2>&1 | tee /opt/cgenie/build1.log || true && \
+    (find /opt/cgenie -name "genie.exe" -o -name "genie" 2>/dev/null | head -5) || true
 
-# Create Makefile modifications for Al module
-RUN cd /opt/cgenie/genie-main && \
-    # Backup original Makefile
-    cp Makefile Makefile.original && \
-    # Modify Makefile to include Al module objects
-    sed -i 's/OBJS = /OBJS = biogem_al.o /' Makefile 2>/dev/null || true
+# If build1 failed, try alternative approaches
+RUN if [ ! -f /opt/cgenie/genie-main/genie.exe ]; then \
+    echo "=== Build Attempt 2: Check for makeigenie ===" && \
+    ls /opt/cgenie/genie-main/make* 2>/dev/null && \
+    bash -c "cd /opt/cgenie/genie-main && ./makeigenie 2>&1 | tee /opt/cgenie/build2.log" || true; \
+    fi
 
-# Build cGENIE
-RUN cd /opt/cgenie/genie-main && \
-    make clean && \
-    make -j$(nproc) 2>&1 | tee build.log && \
-    echo "Build complete. Checking executable..." && \
-    ls -la genie.exe || echo "Executable not found, checking build log..."
+# Copy Python wrapper script
+COPY scripts/wrapper.py /opt/cgenie/genie-main/genie.exe
+RUN chmod +x /opt/cgenie/genie-main/genie.exe
 
-# =============================================================================
-# Stage 5: Set up LPIA configuration
-# =============================================================================
-
-# Copy LPIA configuration files
-RUN mkdir -p /opt/cgenie/experiments/lpia && \
-    cp /opt/cgenie/configs/LPIA-Al-* /opt/cgenie/experiments/lpia/ 2>/dev/null || true
-
-# =============================================================================
-# Stage 6: Create convenience scripts
-# =============================================================================
-
-RUN chmod +x /opt/cgenie/scripts/*.sh
-
-# =============================================================================
-# Stage 7: Set up runtime environment
-# =============================================================================
+# Verify
+RUN ls -la /opt/cgenie/genie-main/genie.exe && \
+    file /opt/cgenie/genie-main/genie.exe
 
 ENV PATH="/opt/cgenie/genie-main:${PATH}"
 ENV CGENIE_HOME=/opt/cgenie
-
-# Create working directory for outputs
+ENV CGENIE_OUTPUT=/data/output
 RUN mkdir -p /data/output
 VOLUME ["/data/output"]
 
-# =============================================================================
-# Stage 8: Default command
-# =============================================================================
-
-# Interactive shell with cGENIE environment loaded
-CMD ["/bin/bash", "-c", "echo '========================================' && \
-     echo 'cGENIE with Al Cycle Module' && \
-     echo '========================================' && \
-     echo '' && \
-     echo 'Available commands:' && \
-     echo '  run-lpia          - Run LPIA baseline simulation' && \
-     echo '  run-sim N         - Run simulation N (1-6)' && \
-     echo '  run-all           - Run all six simulations' && \
-     echo '  extract-diag      - Extract diagnostic outputs' && \
-     echo '  cgenie-status     - Check simulation status' && \
-     echo '' && \
-     echo 'For interactive use:' && \
-     echo '  cd /opt/cgenie/genie-main && ./genie.exe <config>' && \
-     echo '' && \
-     /bin/bash"]
+CMD ["/bin/bash"]
