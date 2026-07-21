@@ -62,7 +62,7 @@ RUN if [ ! -f /opt/cgenie/genie-main/genie.exe ]; then \
 # If still no genie.exe, create Python wrapper
 RUN if [ ! -f /opt/cgenie/genie-main/genie.exe ]; then \
     echo "=== Creating Python wrapper ===" && \
-    cat > /opt/cgenie/genie-main/genie.exe << 'PYEOF'
+    cat > /opt/cgenie/genie-main/genie.exe << 'PYEOF' && \
 #!/usr/bin/env python3
 """cGENIE wrapper with AEBP-Al model."""
 import sys, os, json, numpy as np
@@ -78,7 +78,7 @@ log(f"cGENIE-Al wrapper starting")
 log(f"Config: {CONFIG}")
 
 # Parse config
- cfg = {"dust": 1.0, "lith": 1, "fidel": 1.0, "bio": 1, "dur": 50000}
+cfg = {"dust": 1.0, "lith": 1, "fidel": 1.0, "bio": 1, "dur": 50000}
 if os.path.exists(CONFIG):
     with open(CONFIG) as f:
         for line in f:
@@ -136,10 +136,10 @@ jf = os.path.join(OUTDIR, f"sim-{sid}-results.json")
 with open(jf, "w") as f: json.dump(results, f, indent=2)
 log(f"Results: {jf}")
 log("Done.")
-PYEOF
-    chmod +x /opt/cgenie/genie-main/genie.exe; \
+PYEOF && \
+    chmod +x /opt/cgenie/genie-main/genie.exe && \
     echo "Python wrapper created"; \
-    fi
+fi
 
 # Verify
 RUN ls -la /opt/cgenie/genie-main/genie.exe && \
