@@ -1,30 +1,27 @@
-version: '3.8'
-
 services:
   cgenie-al:
     build:
       context: .
-      dockerfile: Dockerfile
-    image: cgenie-al:latest
+      dockerfile: Dockerfile.v2
+    image: cgenie-al:v2
     container_name: cgenie-lpia
     volumes:
       - ./output:/data/output
     environment:
       - CGENIE_ROOT=/opt/cgenie
+      - CGENIE_OUTPUT=/data/output
     stdin_open: true
     tty: true
     command: /bin/bash
 
-  # Run LPIA simulation as a batch job
   cgenie-lpia-run:
     extends: cgenie-al
     container_name: cgenie-lpia-run
     command: /opt/cgenie/scripts/run-lpia.sh
-    profiles: ['batch']
+    profiles: [batch]
 
-  # Run all six simulations
   cgenie-all:
     extends: cgenie-al
     container_name: cgenie-all-run
     command: /opt/cgenie/scripts/run-all.sh
-    profiles: ['all']
+    profiles: [all]
