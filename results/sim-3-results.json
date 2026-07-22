@@ -1,0 +1,14 @@
+{
+  "sim_id": 3,
+  "parameters": {
+    "dust": 1000.0,
+    "lithology": 0,
+    "fidelity": 0.15,
+    "biosphere": 1,
+    "duration_myr": 30.0
+  },
+  "signal_strength": 0.0,
+  "triangular_network_score": 0.0,
+  "network_reproduced": false,
+  "timestamp": "2026-07-21T13:45:55.502284"
+}

@@ -1,0 +1,5 @@
+[13:44:59] cGENIE-Al wrapper starting
+[13:44:59] Config: /opt/cgenie/configs/LPIA-Al-sim4-volcanic.config
+[13:44:59] Signal=0.000  TriNet=0.008  Reproduced=NO
+[13:44:59] Results: /data/output/sim-4-results.json
+[13:44:59] Done.

@@ -2,7 +2,7 @@ services:
   cgenie-al:
     build:
       context: .
-      dockerfile: Dockerfile.v2
+      dockerfile: Dockerfile
     image: cgenie-al:v2
     container_name: cgenie-lpia
     volumes:
